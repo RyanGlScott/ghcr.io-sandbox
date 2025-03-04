@@ -24,14 +24,8 @@ jobs:
         with:
           submodules: true
 
-      - uses: rlespinasse/github-slug-action@v5
-
-      - id: common-tag
-        run: |
-          echo "::set-output name=common-tag::$GITHUB_REF_SLUG"
-          echo "COMMON_TAG=$GITHUB_REF_SLUG" >> $GITHUB_ENV
-
-      - uses: docker/setup-buildx-action@v3
+      - name: Set up Docker
+        uses: docker/setup-buildx-action@v3
 
       - name: Docker metadata
         uses: docker/metadata-action@v5
@@ -39,45 +33,35 @@ jobs:
         with:
           images: ${{ env.DOCKER_IMAGE }}
 
-      - uses: docker/login-action@v3
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          tags: ${{ env.DOCKER_IMAGE }}:${{ steps.common-tag.outputs.common-tag }}
-          annotations: ${{ steps.meta.outputs.annotations }}
-          labels: ${{ steps.meta.outputs.labels }}
-          load: true
-          push: false
-          file: ${{ matrix.file }}
-          build-args: ${{ matrix.build-args }}
-          cache-from: |
-            type=registry,ref=${{ env.DOCKER_CACHE_IMAGE }}:${{ steps.prefix.outputs.prefix }}main
-            type=registry,ref=${{ env.DOCKER_CACHE_IMAGE }}:${{ steps.common-tag.outputs.common-tag }}
-
-      - name: Cache image build
+      - name: Build and push by digest
         uses: docker/build-push-action@v6
-        continue-on-error: true  # Tolerate cache upload failures - this should be handled better
+        id: build
         with:
           context: .
-          file: ${{ matrix.file }}
-          build-args: ${{ matrix.build-args }}
-          cache-to: type=registry,ref=${{ env.DOCKER_CACHE_IMAGE }}:${{ steps.common-tag.outputs.common-tag }},mode=max
+          tags: ${{ env.DOCKER_IMAGE }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,push-by-digest=true,name-canonical=true,push=true
 
-      - name: Tag Docker image
-        run: docker tag ${{ env.DOCKER_IMAGE }}:$COMMON_TAG ${{ env.DOCKER_IMAGE }}:nightly-${{ runner.arch }}
+      - name: Export digest
+        run: |
+          mkdir -p ${{ runner.temp }}/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
 
-      - name: Save Docker image
-        run: docker save -o nightly-${{ runner.arch }}.tar ${{ env.DOCKER_IMAGE }}:nightly-${{ runner.arch }}
-
-      - uses: actions/upload-artifact@v4
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
         with:
-          path: nightly-${{ runner.arch }}.tar
-          name: nightly-${{ runner.arch }}.tar
+          name: digests-${{ runner.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
 
   push-image:
     runs-on: ubuntu-24.04
@@ -90,34 +74,40 @@ jobs:
         with:
           submodules: true
 
-      - uses: actions/download-artifact@v4
+      - name: Download digests
+        uses: actions/download-artifact@v4
         with:
-          name: nightly-ARM64.tar
+          path: ${{ runner.temp }}/digests
+          pattern: digests-*
+          merge-multiple: true
 
-      - uses: actions/download-artifact@v4
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
         with:
-          name: nightly-X64.tar
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: docker/setup-buildx-action@v3
+      - name: Set up Docker
+        uses: docker/setup-buildx-action@v3
 
       - name: Docker metadata
         uses: docker/metadata-action@v5
         id: meta
         with:
           images: ${{ env.DOCKER_IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
 
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create and push Docker image
+      - name: Create manifest list and push
+        working-directory: ${{ runner.temp }}/digests
         run: |
-          docker load -i nightly-ARM64.tar
-          docker load -i nightly-X64.tar
-          docker push ${{ env.DOCKER_IMAGE }}:nightly-ARM64
-          docker push ${{ env.DOCKER_IMAGE }}:nightly-X64
-          docker manifest create ${{ env.DOCKER_IMAGE }}:nightly ${{ env.DOCKER_IMAGE }}:nightly-ARM64 ${{ env.DOCKER_IMAGE }}:nightly-X64
-          docker manifest inspect ${{ env.DOCKER_IMAGE }}:nightly
-          docker manifest push ${{ env.DOCKER_IMAGE }}:nightly
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.DOCKER_IMAGE }}@sha256:%s ' *)
+
+      - name: Inspect image
+        run: |
+          docker buildx imagetools inspect ${{ env.DOCKER_IMAGE }}:${{ steps.meta.outputs.version }}
