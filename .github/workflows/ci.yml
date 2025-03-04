@@ -104,14 +104,12 @@ jobs:
 
       - name: Create manifest list and push
         working-directory: ${{ runner.temp }}/digests
+        # Build and run a complex command line with eval to avoid wrong word splitting on spaces in the annotations.
         run: |
-          ANNOTATIONS=""
-          for annotation in "${{ join(fromJSON(steps.meta.outputs.json).annotations, '" "') }}"
-          do
-            ANNOTATIONS="$ANNOTATIONS --annotation '$annotation'";
-          done
-          docker buildx imagetools create ${ANNOTATIONS} $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf '${{ env.DOCKER_IMAGE }}@sha256:%s ' *)
+          eval "docker buildx imagetools create ${ANNOTATIONS} \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(jq -cr '.annotations | map("--annotation \"" + . + "\"") | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.DOCKER_IMAGE }}@sha256:%s ' *)"
 
       - name: Inspect image
         run: |
