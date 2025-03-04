@@ -115,8 +115,10 @@ jobs:
 
       - name: Create and push Docker image
         run: |
-          docker load -i ARM64_image.tar
-          docker load -i X64_image.tar
+          docker load -i nightly-ARM64.tar
+          docker load -i nightly-X64.tar
+          docker push ${{ env.DOCKER_IMAGE }}:nightly-ARM64
+          docker push ${{ env.DOCKER_IMAGE }}:nightly-X64
           docker manifest create ${{ env.DOCKER_IMAGE }}:nightly ${{ env.DOCKER_IMAGE }}:nightly-ARM64 ${{ env.DOCKER_IMAGE }}:nightly-X64
           docker manifest inspect ${{ env.DOCKER_IMAGE }}:nightly
           docker manifest push ${{ env.DOCKER_IMAGE }}:nightly
