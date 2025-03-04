@@ -1,3 +1,12 @@
+# A simple example of a multi-arch Docker setup for GitHub Actions. I heavily
+# took inspiration from the following sources:
+#
+# * https://docs.docker.com/build/ci/github-actions/multi-platform/#distribute-build-across-multiple-runners
+#   (For the basic infrastructure to build Docker images for different
+#   architectures on separate jobs, then merging them afterwards)
+# * https://github.com/zammad/zammad/blob/773f912a3b77690a959fb21f1562510e26447ea5/.github/workflows/docker-release.yaml
+#   (For figuring out how to annotate the manifest correctly)
+
 name: ghcr.io-sandbox
 on:
   push:
