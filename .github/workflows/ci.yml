@@ -105,7 +105,12 @@ jobs:
       - name: Create manifest list and push
         working-directory: ${{ runner.temp }}/digests
         run: |
-          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+          ANNOTATIONS=""
+          for annotation in "${{ join(fromJSON(steps.meta.outputs.json).annotations, '" "') }}"
+          do
+            ANNOTATIONS="$ANNOTATIONS --annotation '$annotation'";
+          done
+          docker buildx imagetools create ${ANNOTATIONS} $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
             $(printf '${{ env.DOCKER_IMAGE }}@sha256:%s ' *)
 
       - name: Inspect image
