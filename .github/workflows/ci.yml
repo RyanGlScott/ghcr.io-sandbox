@@ -38,6 +38,8 @@ jobs:
         id: meta
         with:
           images: ${{ env.DOCKER_IMAGE }}
+        env:
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
 
       - uses: docker/login-action@v3
         with:
