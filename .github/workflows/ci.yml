@@ -1,0 +1,121 @@
+name: ghcr.io-sandbox
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  DOCKER_IMAGE: ghcr.io/RyanGlScott/ghcr.io-sandbox
+  DOCKER_CACHE_IMAGE: ghcr.io/RyanGlScott/cache-ghcr.io-sandbox
+
+jobs:
+  build-image:
+    runs-on: ${{ matrix.os }}
+    if: github.repository_owner == 'RyanGlScott'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: rlespinasse/github-slug-action@v3.x
+
+      - id: common-tag
+        run: |
+          echo "::set-output name=common-tag::$GITHUB_REF_SLUG"
+          echo "COMMON_TAG=$GITHUB_REF_SLUG" >> $GITHUB_ENV
+
+      - uses: docker/setup-buildx-action@v1
+
+      - uses: crazy-max/ghaction-docker-meta@v1
+        name: Labels
+        id: labels
+        with:
+          images: ${{ env.DOCKER_IMAGE }}
+
+      - uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v2
+        with:
+          context: .
+          tags: ${{ env.DOCKER_IMAGE }}:${{ steps.common-tag.outputs.common-tag }}
+          labels: ${{ steps.labels.outputs.labels }}
+          load: true
+          push: false
+          file: ${{ matrix.file }}
+          build-args: ${{ matrix.build-args }}
+          cache-from: |
+            type=registry,ref=${{ env.DOCKER_CACHE_IMAGE }}:${{ steps.prefix.outputs.prefix }}main
+            type=registry,ref=${{ env.DOCKER_CACHE_IMAGE }}:${{ steps.common-tag.outputs.common-tag }}
+
+      - name: Cache image build
+        uses: docker/build-push-action@v2
+        continue-on-error: true  # Tolerate cache upload failures - this should be handled better
+        with:
+          context: .
+          file: ${{ matrix.file }}
+          build-args: ${{ matrix.build-args }}
+          cache-to: type=registry,ref=${{ env.DOCKER_CACHE_IMAGE }}:${{ steps.common-tag.outputs.common-tag }},mode=max
+
+      - name: Tag Docker image
+        run: docker tag ${{ env.DOCKER_IMAGE }}:$COMMON_TAG ${{ env.DOCKER_IMAGE }}:nightly-${{ runner.arch }}
+
+      - name: Save Docker image
+        run: docker save -o nightly-${{ runner.arch }}.tar ${{ env.DOCKER_IMAGE }}:nightly-${{ runner.arch }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          path: nightly-${{ runner.arch }}.tar
+          name: nightly-${{ runner.arch }}.tar
+
+  publish-image:
+    runs-on: ubuntu-24.04
+    if: github.repository_owner == 'RyanGlScott'
+    strategy:
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: nightly-ARM64.tar
+          path: nightly-ARM64.tar
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: nightly-X64.tar
+          path: nightly-X64.tar
+
+      - uses: docker/setup-buildx-action@v1
+
+      - uses: crazy-max/ghaction-docker-meta@v1
+        name: Labels
+        id: labels
+        with:
+          images: ${{ env.DOCKER_IMAGE }}
+
+      - uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push Docker image
+        run: |
+          docker load -i ARM64_image.tar
+          docker load -i X64_image.tar
+          docker manifest create ${{ env.DOCKER_IMAGE }}:nightly ${{ env.DOCKER_IMAGE }}:nightly-ARM64 ${{ env.DOCKER_IMAGE }}:nightly-X64
+          docker manifest inspect ${{ env.DOCKER_IMAGE }}:nightly
+          docker manifest push ${{ env.DOCKER_IMAGE }}:nightly
