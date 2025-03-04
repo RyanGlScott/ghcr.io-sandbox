@@ -8,8 +8,8 @@ on:
       - main
 
 env:
-  DOCKER_IMAGE: ghcr.io/RyanGlScott/ghcr.io-sandbox
-  DOCKER_CACHE_IMAGE: ghcr.io/RyanGlScott/cache-ghcr.io-sandbox
+  DOCKER_IMAGE: ghcr.io/ryanglscott/ghcr.io-sandbox
+  DOCKER_CACHE_IMAGE: ghcr.io/ryanglscott/cache-ghcr.io-sandbox
 
 jobs:
   build-image:
@@ -78,8 +78,9 @@ jobs:
           path: nightly-${{ runner.arch }}.tar
           name: nightly-${{ runner.arch }}.tar
 
-  publish-image:
+  push-image:
     runs-on: ubuntu-24.04
+    needs: [build-image]
     if: github.repository_owner == 'RyanGlScott'
     strategy:
       fail-fast: false
