@@ -116,10 +116,8 @@ jobs:
         run: |
           docker load -i nightly-ARM64.tar
           docker load -i nightly-X64.tar
-          ARM64_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "${{ env.DOCKER_IMAGE }}:nightly-ARM64")
-          X64_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "${{ env.DOCKER_IMAGE }}:nightly-X64")
-          docker push $ARM64_DIGEST
-          docker push $X64_DIGEST
-          docker manifest create ${{ env.DOCKER_IMAGE }}:nightly $ARM64_DIGEST $X64_DIGEST
+          docker push ${{ env.DOCKER_IMAGE }}:nightly-ARM64
+          docker push ${{ env.DOCKER_IMAGE }}:nightly-X64
+          docker manifest create ${{ env.DOCKER_IMAGE }}:nightly ${{ env.DOCKER_IMAGE }}:nightly-ARM64 ${{ env.DOCKER_IMAGE }}:nightly-X64
           docker manifest inspect ${{ env.DOCKER_IMAGE }}:nightly
           docker manifest push ${{ env.DOCKER_IMAGE }}:nightly
