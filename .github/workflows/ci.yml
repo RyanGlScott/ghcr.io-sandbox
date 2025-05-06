@@ -90,6 +90,11 @@ jobs:
         with:
           submodules: true
 
+      - name: Get tag version
+        shell: bash
+        run: |
+          echo "VER=$(sed -nr 's/pub const VER: u64 = ([0-9]+);/\1/p' src/ver.rs)" >> "$GITHUB_ENV"
+
       - name: Download digests
         uses: actions/download-artifact@v4
         with:
@@ -114,6 +119,7 @@ jobs:
           images: ${{ env.DOCKER_IMAGE }}
           tags: |
             type=raw,value=nightly,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
+            type=raw,value=${{ env.VER }},enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
         env:
           DOCKER_METADATA_ANNOTATIONS_LEVELS: index
 
