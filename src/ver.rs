@@ -1,2 +1,2 @@
 // Some comments
-pub const VER: u64 = 1;
+pub const VER: u64 = 123000456;
