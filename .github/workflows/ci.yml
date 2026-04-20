@@ -43,6 +43,8 @@ jobs:
         id: meta
         with:
           images: ${{ env.DOCKER_IMAGE }}
+          labels: |
+             org.opencontainers.image.source=https://github.com/RyanGlScott/gha-sandbox
         env:
           DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,manifest-descriptor
 
